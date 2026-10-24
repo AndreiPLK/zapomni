@@ -1,0 +1,15 @@
+{
+  "name": "Запомни",
+  "short_name": "Запомни",
+  "description": "Быстрые заметки голосом, фото и ссылками. Теги и поиск делает Claude.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05070B",
+  "theme_color": "#05070B",
+  "lang": "ru",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

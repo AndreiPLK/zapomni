@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Запомни">
+<title>Запомни</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;600;800&family=Manrope:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: «космос памяти» — живое поле частиц, по центру портал записи (голос первым), под ним орбита тегов и поток стеклянных карточек. */
+:root {
+  --void: #05070B;
+  --glass: rgba(22, 30, 44, 0.55);
+  --glass-hi: rgba(40, 54, 76, 0.6);
+  --edge: rgba(150, 190, 255, 0.14);
+  --ink: #EEF2F8;
+  --muted: #8592A8;
+  --amber: #FFC857;
+  --ember: #FF7A3D;
+  --ice: #6FE3FF;
+  --danger: #FF6B5B;
+  --font-display: "Unbounded", "Manrope", system-ui, sans-serif;
+  --font-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; margin: 0; }
+body {
+  background: var(--void); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: calc(18px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+img { max-width: 100%; }
+#space { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.glow { position: fixed; inset: -20% -10% auto; height: 70vh; z-index: 0; pointer-events: none;
+  background: radial-gradient(50% 60% at 50% 30%, rgba(255, 200, 87, 0.13), transparent 70%),
+              radial-gradient(40% 50% at 20% 10%, rgba(111, 227, 255, 0.08), transparent 70%); }
+.wrap { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.logo { font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: .32em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+.core { width: 12px; height: 12px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 12px var(--amber), 0 0 30px var(--ember); }
+.gear { margin-left: auto; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--edge); }
+.gear svg { width: 20px; height: 20px; }
+.ask { flex: 1 1 100%; order: 3; display: flex; gap: 6px; min-width: 0; background: var(--glass); border: 1px solid var(--edge); border-radius: 999px; padding: 4px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+@media (min-width: 640px) { .ask { flex: 1 1 260px; order: 0; } .gear { margin-left: 0; } }
+.ask input { flex: 1; min-width: 0; background: transparent; border: 0; padding: 8px 14px; }
+.ask input:focus-visible { outline: none; }
+.ask:focus-within { border-color: rgba(111, 227, 255, 0.5); box-shadow: 0 0 0 4px rgba(111, 227, 255, 0.08); }
+input, textarea { font: inherit; color: var(--ink); }
+::placeholder { color: var(--muted); }
+button { font: inherit; cursor: pointer; border: 0; color: var(--ink); background: none; }
+button:focus-visible, .pill-btn:focus-within { outline: 2px solid var(--ice); outline-offset: 2px; }
+.btn-ask { background: rgba(111, 227, 255, 0.12); color: var(--ice); border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 14px; }
+
+.hero { text-align: center; margin-top: 6px; }
+.hero h1 { font-family: var(--font-display); font-weight: 300; font-size: clamp(28px, 7vw, 54px); line-height: 1.05; letter-spacing: -0.03em; margin: 0; text-wrap: balance; }
+.hero h1 b { font-weight: 800; background: linear-gradient(100deg, var(--amber), var(--ember)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* портал записи */
+.portal { position: relative; border-radius: 26px; padding: 1.5px; isolation: isolate; }
+.portal::before { content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: conic-gradient(from var(--a, 0deg), var(--amber), var(--ember), transparent 30%, var(--ice), transparent 60%, var(--amber));
+  opacity: .55; transition: opacity .3s; }
+.portal::after { content: ""; position: absolute; inset: 8px; border-radius: inherit; z-index: -2; background: var(--amber); filter: blur(40px); opacity: .12; transition: opacity .3s; }
+.portal:focus-within::before { opacity: 1; }
+.portal:focus-within::after { opacity: .28; }
+@property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@media (prefers-reduced-motion: no-preference) { .portal::before { animation: spin 7s linear infinite; } @keyframes spin { to { --a: 360deg; } } }
+.composer { background: rgba(9, 13, 20, 0.92); border-radius: 25px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.composer textarea { border: 0; background: transparent; resize: none; min-height: 56px; max-height: 40vh; font-size: 19px; padding: 2px; }
+.composer textarea:focus-visible { outline: none; }
+.composer-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.composer-row .btn-save { margin-left: auto; }
+.pill-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border-radius: 999px; padding: 11px 15px; font-weight: 700; font-size: 14px;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--edge); transition: background .2s, border-color .2s; }
+.pill-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(111, 227, 255, 0.4); }
+.pill-btn svg { width: 20px; height: 20px; }
+.btn-save { position: relative; border-radius: 999px; padding: 14px 24px; font-weight: 800; font-family: var(--font-display); font-size: 14px; letter-spacing: .04em;
+  color: #1A1206; background: linear-gradient(100deg, var(--amber), var(--ember));
+  box-shadow: 0 6px 24px rgba(255, 140, 60, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4); transition: transform .15s, box-shadow .2s; }
+.btn-save:hover { transform: translateY(-1px); box-shadow: 0 10px 34px rgba(255, 140, 60, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.btn-save:active { transform: scale(.97); }
+.btn-save:disabled { opacity: .6; }
+.preview { display: flex; align-items: center; gap: 10px; }
+.preview img { width: 72px; height: 72px; object-fit: cover; border-radius: 14px; border: 1px solid var(--edge); }
+.preview button { color: var(--muted); font-size: 13px; }
+
+/* голос — главное действие */
+.voice-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 4px; }
+.voice { position: relative; width: 108px; height: 108px; border-radius: 50%; display: grid; place-items: center; color: #1A1206;
+  background: radial-gradient(circle at 35% 30%, #FFE29A, var(--amber) 45%, var(--ember));
+  box-shadow: 0 0 0 6px rgba(255, 200, 87, 0.12), 0 12px 50px rgba(255, 140, 60, 0.45); transition: transform .15s; touch-action: manipulation; }
+.voice:active { transform: scale(.95); }
+.voice svg { width: 42px; height: 42px; position: relative; z-index: 1; }
+.voice .ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--amber); opacity: 0; }
+.voice.live { background: radial-gradient(circle at 35% 30%, #FFB199, var(--ember) 50%, #E0452B); }
+@media (prefers-reduced-motion: no-preference) {
+  .voice .ring { animation: ping 2.6s ease-out infinite; } .voice .r2 { animation-delay: 1.3s; }
+  .voice.live .ring { animation-duration: 1s; border-color: var(--ember); }
+  @keyframes ping { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.7); opacity: 0; } }
+}
+.voice-label { font-family: var(--font-display); font-weight: 600; font-size: 14px; letter-spacing: .02em; }
+.voice.live + .voice-label { color: var(--ember); }
+.kb-hint { text-align: center; font-size: 13.5px; color: var(--ice); background: rgba(111, 227, 255, 0.08); border: 1px solid rgba(111, 227, 255, 0.3); border-radius: 14px; padding: 8px 12px; }
+
+/* теги */
+.tags { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px; scrollbar-width: none; }
+.tags::-webkit-scrollbar { display: none; }
+.chip { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--edge); color: var(--ink); font-family: var(--font-mono); font-size: 13px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; flex: none; transition: all .2s; }
+.chip:hover { border-color: rgba(255, 200, 87, 0.5); }
+.chip.on { background: rgba(255, 200, 87, 0.15); border-color: var(--amber); color: var(--amber); box-shadow: 0 0 18px rgba(255, 200, 87, 0.3); }
+.chip small { color: var(--muted); margin-left: 6px; }
+.sugg { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sugg .lbl { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-right: 2px; }
+.sugg .chip { font-size: 12.5px; padding: 4px 10px; }
+.sugg .chip:not(.on) { opacity: .55; text-decoration: line-through; }
+.sugg .think { font-family: var(--font-mono); font-size: 12px; color: var(--ice); }
+
+.answer { position: relative; background: linear-gradient(160deg, rgba(111, 227, 255, 0.10), rgba(22, 30, 44, 0.7)); border: 1px solid rgba(111, 227, 255, 0.35);
+  border-radius: 22px; padding: 16px 18px; white-space: pre-wrap; overflow-wrap: anywhere; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 0 40px rgba(111, 227, 255, 0.12); }
+.answer-head { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--ice); text-transform: uppercase; letter-spacing: .16em; margin-bottom: 8px; }
+.answer-head button { color: var(--muted); font-size: 12px; letter-spacing: 0; text-transform: none; }
+.answer a { color: var(--ice); }
+
+/* поток карточек */
+.feed { display: flex; flex-direction: column; gap: 12px; }
+.note { position: relative; background: var(--glass); border: 1px solid var(--edge); border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: border-color .25s, transform .25s, background .25s; }
+.note:hover { border-color: rgba(255, 200, 87, 0.35); background: var(--glass-hi); }
+.note.fresh { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber), 0 0 40px rgba(255, 200, 87, 0.35); }
+.note-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16.5px; }
+.note-text a { color: var(--ice); text-decoration-color: rgba(111, 227, 255, 0.4); }
+.note-text .ht { font-family: var(--font-mono); font-size: .88em; color: var(--amber); }
+.note img.photo { border-radius: 14px; max-height: 340px; width: auto; object-fit: contain; align-self: flex-start; }
+.note-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.note-meta .when { margin-right: auto; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.note-meta .chip { font-size: 11.5px; padding: 3px 9px; }
+.note-meta .del { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; padding: 3px 4px; opacity: .6; }
+.note-meta .del:hover { opacity: 1; }
+.note-meta .del.armed { color: var(--danger); opacity: 1; }
+.pending { color: var(--ice); }
+@media (prefers-reduced-motion: no-preference) {
+  .note { animation: rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.98); filter: blur(4px); } }
+  .pending { animation: blink 1.2s ease-in-out infinite; } @keyframes blink { 50% { opacity: .35; } }
+}
+.empty { text-align: center; padding: 40px 16px; border: 1px dashed var(--edge); border-radius: 22px; color: var(--muted); background: rgba(10, 14, 22, 0.4); }
+.empty b { display: block; color: var(--ink); font-family: var(--font-display); font-weight: 600; font-size: 17px; margin-bottom: 8px; }
+.status { color: var(--muted); font-size: 12.5px; text-align: center; }
+
+/* настройки */
+.sheet { position: fixed; inset: 0; z-index: 20; display: grid; place-items: end center; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.sheet-card { width: 100%; max-width: 560px; background: #0D121B; border: 1px solid var(--edge); border-radius: 24px 24px 0 0; display: flex; flex-direction: column; gap: 14px;
+  padding: 20px max(18px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); max-height: 90vh; overflow-y: auto; }
+@media (min-width: 640px) { .sheet { place-items: center; } .sheet-card { border-radius: 24px; } }
+.sheet-card h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0; }
+.sheet-card h3 { font-size: 13px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin: 6px 0 0; font-weight: 500; }
+.sheet-card p { margin: 0; color: var(--muted); font-size: 14px; }
+.sheet-card a { color: var(--ice); }
+.field { display: flex; gap: 8px; }
+.field input { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--edge); border-radius: 12px; padding: 10px 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ok { color: #7BE38B !important; }
+</style>
+</head>
+<body>
+<canvas id="space" aria-hidden="true"></canvas>
+<div class="glow" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="core"></span>Запомни</div>
+    <form class="ask" id="askForm">
+      <input id="q" type="search" placeholder="Найти или спросить память…" autocomplete="off" aria-label="Поиск">
+      <button class="btn-ask" id="askBtn" type="submit">Спросить</button>
+    </form>
+    <button class="gear" id="openSettings" type="button" aria-label="Настройки">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <section class="hero">
+    <h1>Скажи — и <b>оно помнит</b></h1>
+  </section>
+
+  <div class="portal">
+    <form class="composer" id="composer">
+      <div class="voice-zone">
+        <button type="button" class="voice" id="voice" aria-label="Сказать голосом">
+          <span class="ring"></span><span class="ring r2"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <div class="voice-label" id="voiceLabel">Нажми и говори</div>
+      </div>
+      <div class="kb-hint" id="kbHint" hidden></div>
+      <textarea id="text" rows="2" placeholder="…или напиши" aria-label="Заметка"></textarea>
+      <div class="preview" id="preview" hidden>
+        <img id="previewImg" alt="Фото к заметке">
+        <button type="button" id="dropPhoto">убрать фото</button>
+      </div>
+      <div class="sugg" id="sugg" hidden></div>
+      <div class="composer-row">
+        <label class="pill-btn" title="Сфоткать">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          Сфоткать
+          <input type="file" id="camera" accept="image/*" capture="environment" hidden>
+        </label>
+        <label class="pill-btn" title="Из галереи">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>
+          Из галереи
+          <input type="file" id="gallery" accept="image/*" hidden>
+        </label>
+        <button class="btn-save" id="save" type="submit">Запомнить</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="answer" id="answer" hidden>
+    <div class="answer-head"><span>Ответ памяти</span><button type="button" id="closeAnswer">закрыть</button></div>
+    <div id="answerText"></div>
+  </div>
+
+  <div class="tags" id="tags"></div>
+  <div class="feed" id="feed"><div class="status">Загружаю память…</div></div>
+</div>
+
+<div class="sheet" id="settings" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <h2 id="setTitle">Настройки</h2>
+
+    <h3>Claude: теги и вопросы</h3>
+    <p>Чтобы теги ставились сами и можно было спрашивать память, вставь свой ключ Anthropic API. Взять его: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Ключ хранится только в этом браузере.</p>
+    <div class="field">
+      <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" aria-label="Ключ Anthropic API">
+      <button class="btn-ask" id="saveKey" type="button">Сохранить</button>
+    </div>
+    <p id="keyState"></p>
+
+    <h3>Бэкап</h3>
+    <p id="countLine">Заметки хранятся в памяти этого устройства. Скачивай бэкап время от времени, чтобы ничего не потерять.</p>
+    <div class="row">
+      <button class="pill-btn" id="exportBtn" type="button">Скачать бэкап</button>
+      <label class="pill-btn">Загрузить бэкап<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+    </div>
+    <p id="backupState"></p>
+
+    <h3>На главный экран</h3>
+    <p>Android, Chrome: меню ⋮ → «Добавить на главный экран». iPhone, Safari: «Поделиться» → «На экран Домой».</p>
+
+    <button class="btn-save" id="closeSettings" type="button">Готово</button>
+  </div>
+</div>
+
+<script>
+/* ---------- живой космос: частицы, параллакс, вспышка при сохранении ---------- */
+const space = (() => {
+  const cv = document.getElementById("space"), ctx = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W, H, dpr, stars = [], sparks = [], mx = 0, my = 0, tx = 0, ty = 0;
+  const COLORS = ["255,200,87", "111,227,255", "238,242,248", "255,122,61"];
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.round(Math.min(220, W * H / 7000));
+    stars = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, z: Math.random() * 0.9 + 0.1,
+      c: COLORS[Math.random() < 0.7 ? 2 : Math.floor(Math.random() * 4)], p: Math.random() * 6.28 }));
+  }
+  function frame(t) {
+    tx += (mx - tx) * 0.04; ty += (my - ty) * 0.04;
+    ctx.clearRect(0, 0, W, H);
+    const scroll = scrollY * 0.15;
+    for (const s of stars) {
+      if (!reduce) { s.y -= s.z * 0.12; if (s.y < -5) { s.y = H + 5; s.x = Math.random() * W; } }
+      const x = s.x + tx * s.z * 18, y = ((s.y - scroll * s.z) % H + H) % H + ty * s.z * 18;
+      const a = 0.25 + 0.55 * s.z * (0.6 + 0.4 * Math.sin(t / 900 + s.p));
+      ctx.fillStyle = `rgba(${s.c},${a})`;
+      ctx.beginPath(); ctx.arc(x, y, s.z * 1.6, 0, 6.29); ctx.fill();
+    }
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i]; p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy = p.vy * 0.96 + 0.05; p.life -= 0.018;
+      if (p.life <= 0) { sparks.splice(i, 1); continue; }
+      ctx.fillStyle = `rgba(${p.c},${p.life})`; ctx.shadowColor = `rgba(${p.c},1)`; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life + 0.4, 0, 6.29); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    requestAnimationFrame(frame);
+  }
+  addEventListener("resize", resize);
+  addEventListener("pointermove", (e) => { mx = e.clientX / W - 0.5; my = e.clientY / H - 0.5; });
+  addEventListener("deviceorientation", (e) => { if (e.gamma != null) { mx = e.gamma / 90; my = (e.beta - 45) / 90; } });
+  resize(); requestAnimationFrame(frame);
+  return {
+    burst(x, y) {
+      if (reduce) return;
+      for (let i = 0; i < 70; i++) {
+        const a = Math.random() * 6.28, v = 1.5 + Math.random() * 5;
+        sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1.5, r: 1 + Math.random() * 2.4, life: 1, c: COLORS[i % 2 ? 0 : (i % 3 ? 3 : 1)] });
+      }
+    },
+  };
+})();
+
+const $ = (id) => document.getElementById(id);
+const KEY_LS = "zapomni-api-key";
+const MODEL_QUICK = "claude-haiku-5-5", MODEL_SMART = "claude-sonnet-5-5";
+let notes = [];          // {id, text, tags[], photo: Blob|null, createdAt, tagged}
+let activeTag = null, filterText = "";
+let pendingBlob = null, pendingUrl = null;
+let askCtl = null, freshId = null;
+const lsGet = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
+const hasKey = () => !!lsGet(KEY_LS);
+
+/* ---------- хранилище: IndexedDB этого устройства ---------- */
+const idb = new Promise((res, rej) => {
+  const r = indexedDB.open("zapomni", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("notes", { keyPath: "id" });
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+async function tx(mode, fn) {
+  const db = await idb;
+  return new Promise((res, rej) => {
+    const t = db.transaction("notes", mode); const req = fn(t.objectStore("notes"));
+    t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+  });
+}
+const store = {
+  async load() { notes = ((await tx("readonly", (s) => s.getAll())) || []).sort((a, b) => b.createdAt - a.createdAt); render(); },
+  async add(n) { const id = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); await tx("readwrite", (s) => s.put({ id, ...n })); await this.load(); return id; },
+  async update(id, patch) { const cur = notes.find((n) => n.id === id); if (!cur) return; await tx("readwrite", (s) => s.put({ ...cur, ...patch })); await this.load(); },
+  async remove(id) { await tx("readwrite", (s) => s.delete(id)); photoUrls.delete(id); await this.load(); },
+  async putMany(arr) { await tx("readwrite", (s) => { arr.forEach((n) => s.put(n)); }); await this.load(); },
+};
+navigator.storage?.persist?.().catch(() => {});
+
+/* ---------- Claude API (ключ пользователя, прямо из браузера) ---------- */
+async function claude({ model, prompt, images = [], maxTokens = 400, signal, onText }) {
+  const key = lsGet(KEY_LS);
+  if (!key) throw { code: "no_key" };
+  const content = [];
+  for (const b of images) content.push({ type: "image", source: { type: "base64", media_type: b.type || "image/jpeg", data: (await blobToDataUrl(b)).split(",")[1] } });
+  content.push({ type: "text", text: prompt });
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", signal,
+    headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model, max_tokens: maxTokens, stream: !!onText, messages: [{ role: "user", content }] }),
+  });
+  if (!res.ok) { const code = res.status === 401 ? "bad_key" : res.status === 429 ? "rate_limited" : "upstream"; throw { code, status: res.status }; }
+  if (!onText) { const j = await res.json(); return (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join(""); }
+  const reader = res.body.getReader(), dec = new TextDecoder(); let buf = "", text = "";
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n"); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+      try { const ev = JSON.parse(line.slice(5)); if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") { text += ev.delta.text; onText(text); } } catch {}
+    }
+  }
+  return text;
+}
+const parseTags = (s) => { const m = String(s).match(/\[[\s\S]*\]/); try { const a = JSON.parse(m ? m[0] : s); return Array.isArray(a) ? a : []; } catch { return []; } };
+
+/* ---------- рендер ---------- */
+const TOKEN_RE = /(https?:\/\/[^\s]+|#[\p{L}\d_]+)/gu;
+function richText(el, text) {
+  let last = 0;
+  for (const m of text.matchAll(TOKEN_RE)) {
+    if (m.index > last) el.append(text.slice(last, m.index));
+    const t = m[0];
+    if (t.startsWith("#")) { const s = document.createElement("span"); s.className = "ht"; s.textContent = t; el.append(s); }
+    else { const a = document.createElement("a"); a.href = t; a.target = "_blank"; a.rel = "noopener"; a.textContent = t; el.append(a); }
+    last = m.index + t.length;
+  }
+  if (last < text.length) el.append(text.slice(last));
+}
+function when(ms) {
+  const d = new Date(ms), now = new Date();
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = (day(now) - day(d)) / 864e5;
+  if (diff === 0) return "сегодня " + hm;
+  if (diff === 1) return "вчера " + hm;
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" }) + " " + hm;
+}
+function tagCounts() {
+  const m = new Map();
+  for (const n of notes) for (const t of n.tags || []) m.set(t, (m.get(t) || 0) + 1);
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+const photoUrls = new Map();
+const photoUrl = (n) => { if (!photoUrls.has(n.id)) photoUrls.set(n.id, URL.createObjectURL(n.photo)); return photoUrls.get(n.id); };
+const rendered = new Set();
+function render() {
+  const tagsEl = $("tags"); tagsEl.textContent = "";
+  for (const [t, c] of tagCounts()) {
+    const b = document.createElement("button"); b.type = "button";
+    b.className = "chip" + (t === activeTag ? " on" : "");
+    b.append("#" + t); const sm = document.createElement("small"); sm.textContent = c; b.append(sm);
+    b.onclick = () => { activeTag = activeTag === t ? null : t; render(); };
+    tagsEl.append(b);
+  }
+  const q = filterText.trim().toLowerCase();
+  const list = notes.filter((n) => (!activeTag || (n.tags || []).includes(activeTag)) &&
+    (!q || (n.text || "").toLowerCase().includes(q) || (n.tags || []).some((t) => t.includes(q.replace(/^#/, "")))));
+  const feed = $("feed"); feed.textContent = "";
+  if (!notes.length) {
+    feed.innerHTML = '<div class="empty"><b>Здесь будет твоя память</b>Нажми на микрофон и скажи первое, например: «Послушать новый альбом Скриптонита». Можно фото, можно ссылку.</div>';
+    return;
+  }
+  if (!list.length) { feed.innerHTML = '<div class="status">Ничего не нашлось. Нажми «Спросить», и Claude поищет по смыслу.</div>'; return; }
+  list.forEach((n, i) => {
+    const el = noteEl(n);
+    if (rendered.has(n.id)) el.style.animation = "none"; else el.style.animationDelay = Math.min(i, 12) * 40 + "ms";
+    rendered.add(n.id);
+    feed.append(el);
+  });
+}
+function noteEl(n) {
+  const el = document.createElement("article"); el.className = "note" + (n.id === freshId ? " fresh" : "");
+  if (n.photo) { const img = document.createElement("img"); img.className = "photo"; img.alt = "Фото"; img.loading = "lazy"; img.src = photoUrl(n); el.append(img); }
+  if (n.text) { const t = document.createElement("div"); t.className = "note-text"; richText(t, n.text); el.append(t); }
+  const meta = document.createElement("div"); meta.className = "note-meta";
+  const w = document.createElement("span"); w.className = "when"; w.textContent = when(n.createdAt); meta.append(w);
+  for (const t of n.tags || []) { const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = "#" + t;
+    c.onclick = () => { activeTag = t; render(); window.scrollTo({ top: 0, behavior: "smooth" }); }; meta.append(c); }
+  if (!n.tagged && hasKey()) { const p = document.createElement("span"); p.className = "pending"; p.textContent = "ставлю теги…"; meta.append(p); }
+  const del = document.createElement("button"); del.type = "button"; del.className = "del"; del.textContent = "удалить";
+  let timer;
+  del.onclick = async () => {
+    if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "точно?"; timer = setTimeout(() => { del.classList.remove("armed"); del.textContent = "удалить"; }, 3000); return; }
+    clearTimeout(timer); await store.remove(n.id);
+  };
+  meta.append(del); el.append(meta);
+  return el;
+}
+
+/* ---------- запись ---------- */
+const ta = $("text");
+const grow = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
+ta.addEventListener("input", grow);
+ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(hover: hover)").matches) { e.preventDefault(); $("composer").requestSubmit(); } });
+
+function shrink(file, max = 1600) {
+  return new Promise((res) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
+      cv.toBlob((b) => res(b || file), "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); res(file); };
+    img.src = url;
+  });
+}
+const blobToDataUrl = (b) => new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+async function onPhoto(e) {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  pendingBlob = await shrink(f);
+  if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+  pendingUrl = URL.createObjectURL(pendingBlob);
+  $("previewImg").src = pendingUrl; $("preview").hidden = false;
+  scheduleSuggest(0);
+}
+$("camera").addEventListener("change", onPhoto);
+$("gallery").addEventListener("change", onPhoto);
+$("dropPhoto").onclick = () => { pendingBlob = null; $("preview").hidden = true; scheduleSuggest(); };
+
+/* ---------- голос ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+function voiceUI(on) {
+  listening = on; $("voice").classList.toggle("live", on);
+  $("voiceLabel").textContent = on ? "Слушаю… нажми, чтобы остановить" : "Нажми и говори";
+}
+function voiceHint(msg) {
+  const h = $("kbHint"); h.textContent = msg; h.hidden = false; ta.focus();
+  clearTimeout(voiceHint.t); voiceHint.t = setTimeout(() => { h.hidden = true; }, 8000);
+}
+$("voice").addEventListener("click", () => {
+  if (listening) { rec?.stop(); return; }
+  if (!SR) { voiceHint("Этот браузер не умеет распознавать голос. Открой в Chrome или Safari, или нажми микрофон на клавиатуре."); return; }
+  rec = new SR(); rec.lang = "ru-RU"; rec.interimResults = true; rec.continuous = true;
+  const base = ta.value.trim() ? ta.value.trim() + " " : "";
+  rec.onresult = (e) => { let s = ""; for (const r of e.results) s += r[0].transcript; ta.value = base + s; grow(); scheduleSuggest(); };
+  rec.onerror = (e) => {
+    voiceUI(false);
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") voiceHint("Разреши микрофон для этого сайта (значок слева от адреса) и нажми ещё раз.");
+    else if (e.error === "network") voiceHint("Для распознавания голоса нужен интернет.");
+    else if (e.error === "audio-capture") voiceHint("Микрофон не найден.");
+  };
+  rec.onend = () => voiceUI(false);
+  try { rec.start(); voiceUI(true); } catch { voiceUI(false); }
+});
+
+/* ---------- теги подставляются сами, пока пишешь ---------- */
+let sugg = [];             // [{t, on, claude}]
+let suggReady = false, suggCtl = null, suggTimer = null;
+const normTag = (t) => String(t).toLowerCase().replace(/^#/, "").trim().replace(/\s+/g, "_").slice(0, 24);
+function renderSugg() {
+  const el = $("sugg"); el.textContent = "";
+  const thinking = suggCtl && !suggReady;
+  el.hidden = !sugg.length && !thinking;
+  if (el.hidden) return;
+  const l = document.createElement("span"); l.className = "lbl"; l.textContent = "теги"; el.append(l);
+  for (const s of sugg) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip" + (s.on ? " on" : ""); b.textContent = "#" + s.t;
+    b.title = s.on ? "Убрать тег" : "Вернуть тег";
+    b.onclick = () => { s.on = !s.on; renderSugg(); };
+    el.append(b);
+  }
+  if (thinking) { const t = document.createElement("span"); t.className = "think"; t.textContent = "подбираю…"; el.append(t); }
+}
+function addSugg(tags, claudeMade) {
+  for (const raw of tags) { const t = normTag(raw); if (t && !sugg.some((s) => s.t === t)) sugg.push({ t, on: true, claude: claudeMade }); }
+}
+function tagPrompt(text, hasPhoto) {
+  const known = tagCounts().slice(0, 60).map(([t]) => t);
+  return "Ты расставляешь теги для личных быстрых заметок. Ответь ТОЛЬКО JSON-массивом из 1-3 тегов: " +
+    "по-русски, нижний регистр, одно слово или слова через _, без #. Если подходит существующий тег, бери его. " +
+    "Пример ответа: [\"музыка\",\"купить\"]\n\nСуществующие теги: " + (known.join(", ") || "пока нет") +
+    "\n\nЗаметка: " + ((text || "").trim() || "(только фото)") + (hasPhoto ? "\n(к заметке приложено фото)" : "");
+}
+function scheduleSuggest(delay = 1100) {
+  const text = ta.value;
+  const own = [...text.matchAll(/#([\p{L}\d_]+)/gu)].map((m) => m[1].toLowerCase());
+  const low = text.toLowerCase();
+  const known = tagCounts().map(([t]) => t).filter((t) => t.length > 2 && low.includes(t.replace(/_/g, " ").slice(0, Math.max(3, t.length - 2))));
+  sugg = sugg.filter((s) => s.claude || own.includes(s.t) || known.includes(s.t) || !s.on);
+  addSugg([...own, ...known.slice(0, 3)], false);
+  suggReady = false; suggCtl?.abort(); suggCtl = null; clearTimeout(suggTimer);
+  renderSugg();
+  if (!hasKey() || (text.trim().length < 6 && !pendingBlob)) return;
+  suggTimer = setTimeout(async () => {
+    const ctl = suggCtl = new AbortController(); renderSugg();
+    try {
+      const out = await claude({ model: MODEL_QUICK, prompt: tagPrompt(ta.value, !!pendingBlob), images: pendingBlob ? [pendingBlob] : [], maxTokens: 60, signal: ctl.signal });
+      if (ctl !== suggCtl) return;
+      sugg = sugg.filter((s) => !s.claude || !s.on);
+      addSugg(parseTags(out).slice(0, 3), true);
+      suggReady = true; renderSugg();
+    } catch {
+      if (ctl !== suggCtl) return;
+      suggCtl = null; renderSugg();
+    }
+  }, delay);
+}
+ta.addEventListener("input", () => scheduleSuggest());
+
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = ta.value.trim();
+  if (!text && !pendingBlob) { ta.focus(); return; }
+  const btn = $("save"); btn.disabled = true; btn.textContent = "…";
+  if (listening) rec?.stop();
+  try {
+    const blob = pendingBlob;
+    const own = [...text.matchAll(/#([\p{L}\d_]+)/gu)].map((m) => m[1].toLowerCase());
+    const picked = sugg.filter((s) => s.on).map((s) => s.t);
+    const removed = new Set(sugg.filter((s) => !s.on).map((s) => s.t));
+    const done = suggReady || !hasKey();
+    const note = { text, tags: [...new Set([...own.filter((t) => !removed.has(t)), ...picked])], photo: blob || null, createdAt: Date.now(), tagged: done };
+    const r = btn.getBoundingClientRect(); space.burst(r.left + r.width / 2, r.top + r.height / 2);
+    const id = await store.add(note);
+    freshId = id; render(); setTimeout(() => { if (freshId === id) { freshId = null; render(); } }, 1800);
+    ta.value = ""; grow(); pendingBlob = null; $("preview").hidden = true;
+    suggCtl?.abort(); suggCtl = null; clearTimeout(suggTimer); sugg = []; suggReady = false; renderSugg();
+    if (!done) autoTag(id, note, blob);
+  } catch (err) {
+    btn.textContent = "Не сохранилось, ещё раз";
+    setTimeout(() => { btn.textContent = "Запомнить"; }, 2500);
+    btn.disabled = false; return;
+  }
+  btn.disabled = false; btn.textContent = "Запомнить"; ta.focus();
+});
+
+async function autoTag(id, note, blob) {
+  try {
+    const out = await claude({ model: MODEL_QUICK, prompt: tagPrompt(note.text, !!blob), images: blob ? [blob] : [], maxTokens: 60 });
+    const auto = parseTags(out).map(normTag).filter(Boolean).slice(0, 3);
+    await store.update(id, { tags: [...new Set([...note.tags, ...auto])], tagged: true });
+  } catch {
+    store.update(id, { tagged: true }).catch(() => {});
+  }
+}
+
+/* ---------- поиск и вопросы ---------- */
+$("q").addEventListener("input", (e) => { filterText = e.target.value; render(); });
+$("closeAnswer").onclick = () => { askCtl?.abort(); $("answer").hidden = true; };
+$("askForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  if (!hasKey()) { openSettings(); $("keyState").textContent = "Чтобы спрашивать память, вставь ключ."; return; }
+  askCtl?.abort(); askCtl = new AbortController();
+  const box = $("answerText"); $("answer").hidden = false; box.textContent = "Вспоминаю…";
+  let ctx = "";
+  for (const n of notes) {
+    const d = new Date(n.createdAt).toLocaleDateString("ru-RU");
+    const line = `[${d}] ${(n.tags || []).map((t) => "#" + t).join(" ")} ${n.text || ""}${n.photo ? " [фото]" : ""}\n`;
+    if (ctx.length + line.length > 120000) break;
+    ctx += line;
+  }
+  const prompt = "Ты — память человека. Ниже его заметки, новые сверху. Ответь на вопрос коротко и по-русски, только по этим заметкам. " +
+    "Перечисли подходящие заметки с датами, ссылки приводи целиком. Если ничего нет, так и скажи. Без markdown-разметки.\n\nВОПРОС: " + q + "\n\nЗАМЕТКИ:\n" + (ctx || "(пусто)");
+  try {
+    const text = await claude({ model: MODEL_SMART, prompt, maxTokens: 1200, signal: askCtl.signal, onText: (t) => { box.textContent = ""; richText(box, t); } });
+    box.textContent = ""; richText(box, text || "Пусто.");
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    box.textContent = { bad_key: "Ключ не подошёл. Проверь его в настройках.", rate_limited: "Слишком много вопросов подряд. Подожди минуту." }[err?.code] || "Не получилось ответить. Проверь интернет и попробуй ещё раз.";
+  }
+});
+
+/* ---------- настройки и бэкап ---------- */
+function openSettings() {
+  $("apiKey").value = ""; $("apiKey").placeholder = hasKey() ? "ключ сохранён — вставь новый, чтобы заменить" : "sk-ant-…";
+  $("keyState").textContent = hasKey() ? "Ключ есть, Claude работает." : "Ключа нет: заметки работают, теги ставишь сам.";
+  $("keyState").classList.toggle("ok", hasKey());
+  $("countLine").textContent = `Заметок: ${notes.length}. Они хранятся в памяти этого устройства. Скачивай бэкап время от времени, чтобы ничего не потерять.`;
+  $("backupState").textContent = "";
+  $("settings").hidden = false;
+}
+$("openSettings").onclick = openSettings;
+$("closeSettings").onclick = () => { $("settings").hidden = true; render(); };
+$("settings").addEventListener("click", (e) => { if (e.target.id === "settings") $("settings").hidden = true; });
+$("saveKey").onclick = () => {
+  const v = $("apiKey").value.trim();
+  if (!v) return;
+  lsSet(KEY_LS, v); $("apiKey").value = "";
+  $("keyState").textContent = "Ключ сохранён. Теги и вопросы включены."; $("keyState").classList.add("ok");
+};
+$("exportBtn").onclick = async () => {
+  const out = [];
+  for (const n of notes) out.push({ ...n, photo: n.photo ? await blobToDataUrl(n.photo) : null });
+  const blob = new Blob([JSON.stringify({ app: "zapomni", version: 1, notes: out })], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "zapomni-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  $("backupState").textContent = `Бэкап скачан: ${notes.length} заметок.`;
+};
+$("importFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const arr = [];
+    for (const n of data.notes || []) arr.push({ ...n, photo: n.photo ? await (await fetch(n.photo)).blob() : null });
+    await store.putMany(arr);
+    $("backupState").textContent = `Загружено заметок: ${arr.length}.`;
+  } catch {
+    $("backupState").textContent = "Этот файл не похож на бэкап «Запомни».";
+  }
+});
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+store.load();
+</script>
+</body>
+</html>
