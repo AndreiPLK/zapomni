@@ -177,6 +177,20 @@ button:focus-visible, .pill-btn:focus-within { outline: 2px solid var(--ice); ou
 .field input { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--edge); border-radius: 12px; padding: 10px 12px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .ok { color: #7BE38B !important; }
+
+/* сохраню сам через секунду-две */
+.autosave { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--amber); }
+.autosave .bar { flex: 1; height: 3px; border-radius: 3px; background: rgba(255, 200, 87, 0.15); overflow: hidden; }
+.autosave .bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--amber), var(--ember)); transform-origin: left; }
+.autosave.run .bar i { animation: drain var(--dur, 2s) linear forwards; }
+@keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.autosave button { color: var(--muted); font-size: 13px; text-decoration: underline; }
+.portal.drop::before { opacity: 1; }
+
+.banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: rgba(255, 200, 87, 0.08); border: 1px solid rgba(255, 200, 87, 0.35); border-radius: 16px; padding: 10px 14px; font-size: 14px; }
+.banner span { flex: 1; min-width: 180px; }
+.banner button { color: var(--amber); font-weight: 700; }
+.banner .x { color: var(--muted); font-weight: 400; }
 </style>
 </head>
 <body>
@@ -215,6 +229,9 @@ button:focus-visible, .pill-btn:focus-within { outline: 2px solid var(--ice); ou
         <button type="button" id="dropPhoto">убрать фото</button>
       </div>
       <div class="sugg" id="sugg" hidden></div>
+      <div class="autosave" id="autosave" hidden>
+        <span>Сохраню сам…</span><span class="bar"><i></i></span><button type="button" id="cancelAuto">не сохранять</button>
+      </div>
       <div class="composer-row">
         <label class="pill-btn" title="Сфоткать">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
@@ -234,6 +251,12 @@ button:focus-visible, .pill-btn:focus-within { outline: 2px solid var(--ice); ou
   <div class="answer" id="answer" hidden>
     <div class="answer-head"><span>Ответ памяти</span><button type="button" id="closeAnswer">закрыть</button></div>
     <div id="answerText"></div>
+  </div>
+
+  <div class="banner" id="backupBanner" hidden>
+    <span id="backupBannerText">Заметки живут только в этом телефоне. Скачай бэкап, чтобы не потерять.</span>
+    <button type="button" id="bannerBackup">Скачать бэкап</button>
+    <button type="button" class="x" id="bannerLater">позже</button>
   </div>
 
   <div class="tags" id="tags"></div>
@@ -472,7 +495,9 @@ function shrink(file, max = 1600) {
 const blobToDataUrl = (b) => new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
 async function onPhoto(e) {
   const f = e.target.files[0]; e.target.value = "";
-  if (!f) return;
+  if (f) setPhoto(f);
+}
+async function setPhoto(f) {
   pendingBlob = await shrink(f);
   if (pendingUrl) URL.revokeObjectURL(pendingUrl);
   pendingUrl = URL.createObjectURL(pendingBlob);
@@ -482,6 +507,35 @@ async function onPhoto(e) {
 $("camera").addEventListener("change", onPhoto);
 $("gallery").addEventListener("change", onPhoto);
 $("dropPhoto").onclick = () => { pendingBlob = null; $("preview").hidden = true; scheduleSuggest(); };
+
+// картинку можно вставить (Ctrl+V) или перетащить в поле записи
+document.addEventListener("paste", (e) => {
+  const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith("image/"));
+  if (f) { e.preventDefault(); setPhoto(f); }
+});
+const portal = document.querySelector(".portal");
+portal.addEventListener("dragover", (e) => { e.preventDefault(); portal.classList.add("drop"); });
+portal.addEventListener("dragleave", () => portal.classList.remove("drop"));
+portal.addEventListener("drop", (e) => {
+  e.preventDefault(); portal.classList.remove("drop");
+  const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith("image/"));
+  if (f) setPhoto(f);
+  else { const t = e.dataTransfer.getData("text"); if (t) { ta.value = (ta.value.trim() + " " + t).trim(); grow(); scheduleSuggest(); } }
+});
+
+/* ---------- сохраню сам: после голоса и после «Поделиться» ---------- */
+let autoTimer = null;
+function armAutoSave(ms = 2200) {
+  const el = $("autosave"); clearTimeout(autoTimer);
+  el.style.setProperty("--dur", ms + "ms");
+  el.classList.remove("run"); el.hidden = false; void el.offsetWidth; el.classList.add("run");
+  autoTimer = setTimeout(() => { el.hidden = true; $("composer").requestSubmit(); }, ms);
+}
+function cancelAutoSave() { clearTimeout(autoTimer); autoTimer = null; $("autosave").hidden = true; }
+$("cancelAuto").onclick = () => { cancelAutoSave(); ta.focus(); };
+ta.addEventListener("keydown", () => { if (autoTimer) cancelAutoSave(); });
+ta.addEventListener("pointerdown", () => { if (autoTimer) cancelAutoSave(); });
+document.querySelectorAll(".sugg, .preview").forEach((el) => el.addEventListener("click", () => { if (autoTimer) armAutoSave(); }));
 
 /* ---------- голос ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -494,21 +548,25 @@ function voiceHint(msg) {
   const h = $("kbHint"); h.textContent = msg; h.hidden = false; ta.focus();
   clearTimeout(voiceHint.t); voiceHint.t = setTimeout(() => { h.hidden = true; }, 8000);
 }
-$("voice").addEventListener("click", () => {
+function startVoice(quiet = false) {
+  cancelAutoSave();
   if (listening) { rec?.stop(); return; }
-  if (!SR) { voiceHint("Этот браузер не умеет распознавать голос. Открой в Chrome или Safari, или нажми микрофон на клавиатуре."); return; }
+  if (!SR) { if (!quiet) voiceHint("Этот браузер не умеет распознавать голос. Открой в Chrome или Safari, или нажми микрофон на клавиатуре."); return; }
   rec = new SR(); rec.lang = "ru-RU"; rec.interimResults = true; rec.continuous = true;
   const base = ta.value.trim() ? ta.value.trim() + " " : "";
-  rec.onresult = (e) => { let s = ""; for (const r of e.results) s += r[0].transcript; ta.value = base + s; grow(); scheduleSuggest(); };
+  let heard = false;
+  rec.onresult = (e) => { let s = ""; for (const r of e.results) s += r[0].transcript; ta.value = base + s; heard = !!s.trim(); grow(); scheduleSuggest(); };
   rec.onerror = (e) => {
-    voiceUI(false);
+    voiceUI(false); if (quiet) return;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") voiceHint("Разреши микрофон для этого сайта (значок слева от адреса) и нажми ещё раз.");
     else if (e.error === "network") voiceHint("Для распознавания голоса нужен интернет.");
     else if (e.error === "audio-capture") voiceHint("Микрофон не найден.");
   };
-  rec.onend = () => voiceUI(false);
+  // договорил — сохраняю сам через пару секунд (можно отменить)
+  rec.onend = () => { voiceUI(false); if (heard && ta.value.trim()) armAutoSave(); };
   try { rec.start(); voiceUI(true); } catch { voiceUI(false); }
-});
+}
+$("voice").addEventListener("click", () => startVoice());
 
 /* ---------- теги подставляются сами, пока пишешь ---------- */
 let sugg = [];             // [{t, on, claude}]
@@ -569,6 +627,7 @@ $("composer").addEventListener("submit", async (e) => {
   const text = ta.value.trim();
   if (!text && !pendingBlob) { ta.focus(); return; }
   const btn = $("save"); btn.disabled = true; btn.textContent = "…";
+  cancelAutoSave();
   if (listening) rec?.stop();
   try {
     const blob = pendingBlob;
@@ -647,15 +706,27 @@ $("saveKey").onclick = () => {
   lsSet(KEY_LS, v); $("apiKey").value = "";
   $("keyState").textContent = "Ключ сохранён. Теги и вопросы включены."; $("keyState").classList.add("ok");
 };
-$("exportBtn").onclick = async () => {
+async function doExport() {
   const out = [];
   for (const n of notes) out.push({ ...n, photo: n.photo ? await blobToDataUrl(n.photo) : null });
   const blob = new Blob([JSON.stringify({ app: "zapomni", version: 1, notes: out })], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = "zapomni-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  $("backupState").textContent = `Бэкап скачан: ${notes.length} заметок.`;
-};
+  lsSet("zapomni-last-backup", String(Date.now())); $("backupBanner").hidden = true;
+}
+$("exportBtn").onclick = async () => { await doExport(); $("backupState").textContent = `Бэкап скачан: ${notes.length} заметок.`; };
+
+// напоминание о бэкапе: раз в неделю, если заметок уже набралось
+function checkBackupBanner() {
+  const DAY = 864e5, now = Date.now();
+  const last = +lsGet("zapomni-last-backup") || 0, snooze = +lsGet("zapomni-backup-snooze") || 0;
+  const show = notes.length >= 5 && now - last > 7 * DAY && now > snooze;
+  $("backupBanner").hidden = !show;
+  if (show) $("backupBannerText").textContent = `${notes.length} заметок живут только в этом телефоне. Скачай бэкап, чтобы не потерять.`;
+}
+$("bannerBackup").onclick = doExport;
+$("bannerLater").onclick = () => { lsSet("zapomni-backup-snooze", String(Date.now() + 3 * 864e5)); $("backupBanner").hidden = true; };
 $("importFile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
@@ -670,8 +741,29 @@ $("importFile").addEventListener("change", async (e) => {
   }
 });
 
+/* ---------- старт: обычный, из ярлыка «Сказать» или из «Поделиться» ---------- */
+async function takeShared() {
+  try {
+    const c = await caches.open("zapomni-share");
+    const d = await c.match("shared-data"), p = await c.match("shared-photo");
+    if (!d && !p) return;
+    const data = d ? await d.json() : {};
+    const parts = [];
+    for (const s of [data.title, data.text, data.url]) { const v = (s || "").trim(); if (v && !parts.some((x) => x.includes(v))) parts.push(v); }
+    ta.value = parts.join("\n"); grow();
+    if (p) await setPhoto(await p.blob()); else scheduleSuggest(0);
+    await c.delete("shared-data"); await c.delete("shared-photo");
+    armAutoSave(2600);
+  } catch {}
+}
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-store.load();
+const params = new URLSearchParams(location.search);
+store.load().then(() => {
+  checkBackupBanner();
+  if (params.has("shared")) takeShared();
+  if (params.get("go") === "voice") startVoice(true);
+  if (params.size) history.replaceState(null, "", location.pathname);
+});
 </script>
 </body>
 </html>
